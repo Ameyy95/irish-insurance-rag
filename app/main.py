@@ -1,4 +1,7 @@
 from fastapi import Depends, FastAPI, HTTPException
+from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from app.audit import db as audit_db
@@ -9,13 +12,30 @@ from app.rag.ingest import ingest_folder
 from app.rag.risk import assess_risk
 from app.security.auth import Principal, require_role
 
+app = FastAPI(title="ComplianceRAG", version="1.0.0")
 
-app = FastAPI(title="Irish Insurance RAG Compliance Agent", version="0.1.0")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.on_event("startup")
 def _startup() -> None:
     audit_db.init_db()
+
+
+@app.get("/", response_class=HTMLResponse)
+async def serve_frontend():
+    return FileResponse("rag-compliance-ui.html")
+
+
+@app.get("/health")
+def health():
+    return {"ok": True}
 
 
 class IngestRequest(BaseModel):
@@ -47,11 +67,6 @@ class QueryResponse(BaseModel):
 class ReviewApproveRequest(BaseModel):
     ticket_id: str
     top_k: int = 6
-
-
-@app.get("/health")
-def health():
-    return {"ok": True}
 
 
 @app.post("/ingest", response_model=IngestResponse)
@@ -167,4 +182,3 @@ def review_approve(req: ReviewApproveRequest, principal: Principal = Depends(req
 @app.get("/audit/queries")
 def audit_queries(limit: int = 50, principal: Principal = Depends(require_role("admin"))):
     return {"queries": list_recent_queries(limit=limit)}
-
